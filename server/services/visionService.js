@@ -393,28 +393,71 @@ const categorizeWithHuggingFace = async (filePath, apiKey) => {
     let imageContent = fs.readFileSync(filePath).toString('base64');
     imageContent = imageContent.replace(/^data:image\/\w+;base64,/, '');
 
-    try {
-        // Step 1: Get image description using BLIP
-        console.log("[Hugging Face] Step 1: Generating image caption...");
-        const captionResponse = await axios.post(
-            "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large",
-            { inputs: imageContent },
-            {
-                headers: {
-                    "Authorization": `Bearer ${apiKey}`,
-                    "Content-Type": "application/json"
+    // Priority list of captioning models
+    const CAPTION_MODELS = [
+        "Salesforce/blip-image-captioning-base",
+        "nlpconnect/vit-gpt2-image-captioning",
+        "Salesforce/blip-image-captioning-large"
+    ];
+
+    let description = null;
+    let usedModel = null;
+    let lastError = null;
+
+    // Step 1: Try to get a caption from one of the models
+    console.log("[Hugging Face] Step 1: Generating image caption...");
+
+    for (const model of CAPTION_MODELS) {
+        try {
+            console.log(`[Hugging Face] Attempting caption model: ${model}`);
+            const captionResponse = await axios.post(
+                `https://api-inference.huggingface.co/models/${model}`,
+                { inputs: imageContent },
+                {
+                    headers: {
+                        "Authorization": `Bearer ${apiKey}`,
+                        "Content-Type": "application/json"
+                    }
                 }
+            );
+
+            if (captionResponse.data && captionResponse.data[0] && captionResponse.data[0].generated_text) {
+                description = captionResponse.data[0].generated_text;
+                usedModel = model;
+                console.log(`[Hugging Face] Success with ${model}. Caption: "${description}"`);
+                break;
+            } else {
+                throw new Error(`Invalid response format from ${model}`);
             }
-        );
 
-        const description = captionResponse.data[0]?.generated_text;
-        if (!description) throw new Error("Failed to generate image description.");
-        console.log(`[Hugging Face] Generated Caption: "${description}"`);
+        } catch (error) {
+            console.warn(`[Hugging Face] Failed with ${model}:`, error.message);
+            if (error.response) {
+                console.warn(`[Hugging Face] Status: ${error.response.status}, Data:`, JSON.stringify(error.response.data));
+            }
+            lastError = error;
+            // Continue to next model
+        }
+    }
 
+    if (!description) {
+        const status = lastError?.response?.status || 'Unknown';
+        const details = lastError?.response?.data ? JSON.stringify(lastError.response.data) : lastError?.message;
+        return {
+            category: "Unable to categorize",
+            confidence: 0,
+            reasoning: `Hugging Face Captioning Failed. Last error (${status}) with model '${CAPTION_MODELS[CAPTION_MODELS.length - 1]}': ${details}`,
+            provider: 'Hugging Face (Failed)'
+        };
+    }
+
+    try {
         // Step 2: Categorize description using BART
         console.log("[Hugging Face] Step 2: Categorizing description...");
+        const classificationModel = "facebook/bart-large-mnli";
+
         const classificationResponse = await axios.post(
-            "https://api-inference.huggingface.co/models/facebook/bart-large-mnli",
+            `https://api-inference.huggingface.co/models/${classificationModel}`,
             {
                 inputs: description,
                 parameters: { candidate_labels: ADOBE_CATEGORIES }
@@ -428,6 +471,11 @@ const categorizeWithHuggingFace = async (filePath, apiKey) => {
         );
 
         const classification = classificationResponse.data;
+
+        if (!classification.labels || !classification.scores) {
+            throw new Error("Invalid response from classification model");
+        }
+
         const bestCategory = classification.labels[0];
         const confidence = classification.scores[0];
 
@@ -436,21 +484,17 @@ const categorizeWithHuggingFace = async (filePath, apiKey) => {
         return {
             category: bestCategory,
             confidence: confidence,
-            reasoning: `Image analysis: "${description}". Matched to category "${bestCategory}" with ${(confidence * 100).toFixed(1)}% confidence.`,
+            reasoning: `Image analysis: "${description}" (via ${usedModel}). Matched to category "${bestCategory}" with ${(confidence * 100).toFixed(1)}% confidence.`,
             provider: 'Hugging Face (BLIP + BART)'
         };
 
     } catch (error) {
-        console.error("Hugging Face API Failed:", error.message);
-        if (error.response) {
-            console.error("Details:", error.response.data);
-        }
-
+        console.error("Hugging Face Classification Failed:", error.message);
         return {
             category: "Unable to categorize",
             confidence: 0,
-            reasoning: `Analysis failed: ${error.message}`,
-            provider: 'Hugging Face (Failed)'
+            reasoning: `Classification failed after captioning. Error: ${error.message}`,
+            provider: 'Hugging Face (Partial Success)'
         };
     }
 };

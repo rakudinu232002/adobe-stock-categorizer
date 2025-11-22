@@ -115,7 +115,10 @@ function App() {
             <div className="bg-blue-600 p-2 rounded-lg">
               <Layers className="text-white" size={24} />
             </div>
-            <h1 className="text-xl font-bold text-gray-900">Adobe Stock Auto-Categorizer</h1>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Adobe Stock Categorizer - Vercel Test OK!</h1>
+              <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">🚀 Vercel Update Test: LIVE!</span>
+            </div>
           </div>
 
           <div className="flex items-center space-x-6">
