@@ -386,6 +386,75 @@ REASON: [detailed explanation of why this category fits, mentioning specific det
     };
 };
 
+const categorizeWithHuggingFace = async (filePath, apiKey) => {
+    console.log(`[Hugging Face] Starting analysis for ${filePath}`);
+
+    // Read file and ensure clean base64
+    let imageContent = fs.readFileSync(filePath).toString('base64');
+    imageContent = imageContent.replace(/^data:image\/\w+;base64,/, '');
+
+    try {
+        // Step 1: Get image description using BLIP
+        console.log("[Hugging Face] Step 1: Generating image caption...");
+        const captionResponse = await axios.post(
+            "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large",
+            { inputs: imageContent },
+            {
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+
+        const description = captionResponse.data[0]?.generated_text;
+        if (!description) throw new Error("Failed to generate image description.");
+        console.log(`[Hugging Face] Generated Caption: "${description}"`);
+
+        // Step 2: Categorize description using BART
+        console.log("[Hugging Face] Step 2: Categorizing description...");
+        const classificationResponse = await axios.post(
+            "https://api-inference.huggingface.co/models/facebook/bart-large-mnli",
+            {
+                inputs: description,
+                parameters: { candidate_labels: ADOBE_CATEGORIES }
+            },
+            {
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+
+        const classification = classificationResponse.data;
+        const bestCategory = classification.labels[0];
+        const confidence = classification.scores[0];
+
+        console.log(`[Hugging Face] Categorized as: ${bestCategory} (${(confidence * 100).toFixed(1)}%)`);
+
+        return {
+            category: bestCategory,
+            confidence: confidence,
+            reasoning: `Image analysis: "${description}". Matched to category "${bestCategory}" with ${(confidence * 100).toFixed(1)}% confidence.`,
+            provider: 'Hugging Face (BLIP + BART)'
+        };
+
+    } catch (error) {
+        console.error("Hugging Face API Failed:", error.message);
+        if (error.response) {
+            console.error("Details:", error.response.data);
+        }
+
+        return {
+            category: "Unable to categorize",
+            confidence: 0,
+            reasoning: `Analysis failed: ${error.message}`,
+            provider: 'Hugging Face (Failed)'
+        };
+    }
+};
+
 const processImage = async (filePath, apiKeys) => {
     try {
         let result = null;
@@ -401,6 +470,8 @@ const processImage = async (filePath, apiKeys) => {
                     result = await callGeminiAPI(filePath, keyObj.key);
                 } else if (keyObj.provider === 'OpenRouter') {
                     result = await callOpenRouterAPI(filePath, keyObj.key);
+                } else if (keyObj.provider === 'Hugging Face') {
+                    result = await categorizeWithHuggingFace(filePath, keyObj.key);
                 }
 
                 if (result) break;

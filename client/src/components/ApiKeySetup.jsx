@@ -7,7 +7,7 @@ const PROVIDERS = [
     { id: 'Google Gemini API', name: 'Google Gemini API', placeholder: 'Enter your Gemini API Key', link: 'https://ai.google.dev/' },
     { id: 'OpenRouter', name: 'OpenRouter (Free - Recommended)', placeholder: 'Enter your OpenRouter API Key', link: 'https://openrouter.ai/keys' },
     { id: 'Azure Computer Vision', name: 'Azure Computer Vision', placeholder: 'Enter your Azure API Key', link: 'https://azure.microsoft.com/en-us/services/cognitive-services/computer-vision/' },
-    { id: 'Hugging Face', name: 'Hugging Face Inference API', placeholder: 'Enter your Hugging Face Access Token', link: 'https://huggingface.co/settings/tokens' }
+    { id: 'Hugging Face', name: 'Hugging Face (Free - Accurate)', placeholder: 'Enter your Hugging Face Access Token', link: 'https://huggingface.co/settings/tokens' }
 ];
 
 const ApiKeySetup = ({ onSave }) => {
@@ -128,7 +128,20 @@ const ApiKeySetup = ({ onSave }) => {
                             </div>
                         )}
 
-                        {item.provider !== 'Local Device' && item.provider !== 'OpenRouter' && (
+                        {/* Hugging Face Instructions */}
+                        {item.provider === 'Hugging Face' && (
+                            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-100 rounded text-sm text-yellow-800">
+                                <p className="font-semibold mb-1">Get your FREE Hugging Face token:</p>
+                                <ol className="list-decimal list-inside space-y-1 ml-1">
+                                    <li>Visit: <a href="https://huggingface.co/join" target="_blank" rel="noopener noreferrer" className="underline font-medium">huggingface.co/join</a> (Sign up free)</li>
+                                    <li>Go to: <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" className="underline font-medium">Settings &gt; Access Tokens</a></li>
+                                    <li>Click "New token" &rarr; Name: "image-categorizer" &rarr; Role: "read"</li>
+                                    <li>Copy the token (starts with "hf_...") and paste it above</li>
+                                </ol>
+                            </div>
+                        )}
+
+                        {item.provider !== 'Local Device' && item.provider !== 'OpenRouter' && item.provider !== 'Hugging Face' && (
                             <div className="mt-2 text-xs text-right">
                                 <a href={PROVIDERS.find(p => p.id === item.provider)?.link} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
                                     Get API Key
