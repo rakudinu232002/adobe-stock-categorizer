@@ -279,85 +279,111 @@ const callOpenRouterAPI = async (filePath, apiKey) => {
 
     const url = "https://openrouter.ai/api/v1/chat/completions";
 
+    // Priority list of free vision models
+    const MODELS = [
+        "google/gemini-flash-1.5-8b:free",
+        "meta-llama/llama-3.2-11b-vision-instruct:free",
+        "qwen/qwen-2-vl-7b-instruct:free",
+        "google/gemini-2.0-flash-thinking-exp:free"
+    ];
+
     const prompt = `Analyze this image carefully. Identify all objects, subjects, themes, colors, and mood. Then categorize it into EXACTLY ONE of these Adobe Stock categories: Animals, Buildings and Architecture, Business, Drinks, The Environment, States of Mind, Food, Graphic Resources, Hobbies and Leisure, Industry, Landscapes, Lifestyle, People, Plants and Flowers, Culture and Religion, Science, Social Issues, Sports, Technology, Transport, or Travel. Respond in this exact format:
 CATEGORY: [category name]
 CONFIDENCE: [0-100]
 REASON: [detailed explanation of why this category fits, mentioning specific detected elements]`;
 
-    try {
-        const response = await axios.post(url, {
-            model: "google/gemini-2.0-flash-thinking-exp:free",
-            messages: [{
-                role: "user",
-                content: [
-                    { type: "text", text: prompt },
-                    { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageContent}` } }
-                ]
-            }]
-        }, {
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "HTTP-Referer": "http://localhost:5173",
-                "X-Title": "Adobe Stock Categorizer",
-                "Content-Type": "application/json"
+    let lastError = null;
+
+    for (const model of MODELS) {
+        console.log(`[OpenRouter] Attempting model: ${model}`);
+        try {
+            const response = await axios.post(url, {
+                model: model,
+                messages: [{
+                    role: "user",
+                    content: [
+                        { type: "text", text: prompt },
+                        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageContent}` } }
+                    ]
+                }]
+            }, {
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "HTTP-Referer": "http://localhost:5173",
+                    "X-Title": "Adobe Stock Categorizer",
+                    "Content-Type": "application/json"
+                }
+            });
+
+            const candidate = response.data.choices?.[0]?.message?.content;
+
+            if (!candidate) {
+                throw new Error(`No response text from OpenRouter API using ${model}.`);
             }
-        });
 
-        const candidate = response.data.choices?.[0]?.message?.content;
+            console.log(`[OpenRouter] Success with ${model}. Response:`, candidate);
 
-        if (!candidate) {
-            throw new Error("No response text from OpenRouter API.");
+            // Parse the text response
+            const categoryMatch = candidate.match(/CATEGORY:\s*(.+)/i);
+            const confidenceMatch = candidate.match(/CONFIDENCE:\s*(\d+(?:\.\d+)?)/i);
+            const reasonMatch = candidate.match(/REASON:\s*(.+)/si);
+
+            let category = categoryMatch ? categoryMatch[1].trim() : "Unable to categorize";
+            let confidence = confidenceMatch ? parseFloat(confidenceMatch[1]) / 100 : 0.0;
+            let reasoning = reasonMatch ? reasonMatch[1].trim() : "AI could not provide a clear reason.";
+
+            // Validate category
+            if (!ADOBE_CATEGORIES.includes(category)) {
+                console.warn(`[OpenRouter] Invalid category returned: "${category}".`);
+                const match = ADOBE_CATEGORIES.find(c => c.toLowerCase() === category.toLowerCase());
+                category = match || "Unable to categorize";
+            }
+
+            return {
+                category: category,
+                confidence: confidence,
+                reasoning: reasoning + ` (Model: ${model})`,
+                provider: 'OpenRouter (Free)'
+            };
+
+        } catch (error) {
+            console.warn(`[OpenRouter] Failed with ${model}:`, error.message);
+
+            // Check for specific errors to stop trying if it's an auth issue
+            if (error.response && error.response.status === 401) {
+                lastError = error;
+                break; // Don't try other models if key is invalid
+            }
+
+            lastError = error;
+            // Continue to next model
         }
-
-        console.log("OpenRouter Raw Response:", candidate);
-
-        // Parse the text response
-        const categoryMatch = candidate.match(/CATEGORY:\s*(.+)/i);
-        const confidenceMatch = candidate.match(/CONFIDENCE:\s*(\d+(?:\.\d+)?)/i);
-        const reasonMatch = candidate.match(/REASON:\s*(.+)/si);
-
-        let category = categoryMatch ? categoryMatch[1].trim() : "Unable to categorize";
-        let confidence = confidenceMatch ? parseFloat(confidenceMatch[1]) / 100 : 0.0;
-        let reasoning = reasonMatch ? reasonMatch[1].trim() : "AI could not provide a clear reason.";
-
-        // Validate category
-        if (!ADOBE_CATEGORIES.includes(category)) {
-            console.warn(`[OpenRouter] Invalid category returned: "${category}".`);
-            const match = ADOBE_CATEGORIES.find(c => c.toLowerCase() === category.toLowerCase());
-            category = match || "Unable to categorize";
-        }
-
-        return {
-            category: category,
-            confidence: confidence,
-            reasoning: reasoning + " (Model: google/gemini-2.0-flash-thinking-exp:free)",
-            provider: 'OpenRouter (Free)'
-        };
-
-    } catch (error) {
-        // Enhance error object with specific details
-        if (error.response) {
-            const status = error.response.status;
-            const data = error.response.data;
-            let message = `OpenRouter API Error (${status}): `;
-
-            if (status === 401) message += "Invalid API key. Get a new one from openrouter.ai/keys";
-            else if (status === 429) message += "Daily limit reached (200/day). Wait 24 hours or create another free key";
-            else if (status === 402) message += "This model requires credits. Use a :free model instead";
-            else message += JSON.stringify(data);
-
-            error.message = message;
-            error.details = data;
-        }
-        console.error("OpenRouter API Failed:", error.message);
-
-        return {
-            category: "Unable to categorize",
-            confidence: 0,
-            reasoning: `Analysis failed: ${error.message}`,
-            provider: 'OpenRouter (Failed)'
-        };
     }
+
+    // If we get here, all models failed
+    console.error("OpenRouter API Failed with all models.");
+
+    // Enhance error object with specific details from the last error
+    let message = "All OpenRouter models failed.";
+    if (lastError && lastError.response) {
+        const status = lastError.response.status;
+        const data = lastError.response.data;
+        message = `OpenRouter API Error (${status}): `;
+
+        if (status === 401) message += "Invalid API key. Get a new one from openrouter.ai/keys";
+        else if (status === 429) message += "Daily limit reached (200/day). Wait 24 hours or create another free key";
+        else if (status === 402) message += "This model requires credits. Use a :free model instead";
+        else message += JSON.stringify(data);
+    } else if (lastError) {
+        message += " " + lastError.message;
+    }
+
+    return {
+        category: "Unable to categorize",
+        confidence: 0,
+        reasoning: `Analysis failed: ${message}`,
+        provider: 'OpenRouter (Failed)'
+    };
 };
 
 const processImage = async (filePath, apiKeys) => {
