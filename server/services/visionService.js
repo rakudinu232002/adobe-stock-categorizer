@@ -411,7 +411,7 @@ const categorizeWithHuggingFace = async (filePath, apiKey) => {
         try {
             console.log(`[Hugging Face] Attempting caption model: ${model}`);
             const captionResponse = await axios.post(
-                `https://api-inference.huggingface.co/models/${model}`,
+                `https://router.huggingface.co/models/${model}`,
                 { inputs: imageContent },
                 {
                     headers: {
@@ -457,7 +457,7 @@ const categorizeWithHuggingFace = async (filePath, apiKey) => {
         const classificationModel = "facebook/bart-large-mnli";
 
         const classificationResponse = await axios.post(
-            `https://api-inference.huggingface.co/models/${classificationModel}`,
+            `https://router.huggingface.co/models/${classificationModel}`,
             {
                 inputs: description,
                 parameters: { candidate_labels: ADOBE_CATEGORIES }
