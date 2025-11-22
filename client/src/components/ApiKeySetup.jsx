@@ -3,15 +3,18 @@ import { Plus, Trash2, Save, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucid
 
 const PROVIDERS = [
     { id: 'Local Device', name: 'Local Device (Offline / Free)', placeholder: 'No API Key Required', link: '#' },
+    { id: 'Imagga', name: 'Imagga (1000/month Free - Recommended)', placeholder: 'Enter: APIKey:APISecret', link: 'https://imagga.com' },
+    { id: 'IBM Watson', name: 'IBM Watson (1000/month Free)', placeholder: 'Enter your IBM Watson API Key', link: 'https://cloud.ibm.com/catalog/services/visual-recognition' },
+    { id: 'Hugging Face Inference', name: 'Hugging Face Inference (300/hour Free)', placeholder: 'Enter your HF Token', link: 'https://huggingface.co/settings/tokens' },
     { id: 'Google Cloud Vision', name: 'Google Cloud Vision', placeholder: 'Enter your Google Cloud API Key', link: 'https://cloud.google.com/vision/docs/setup' },
     { id: 'Google Gemini API', name: 'Google Gemini API', placeholder: 'Enter your Gemini API Key', link: 'https://ai.google.dev/' },
-    { id: 'OpenRouter', name: 'OpenRouter (Free - Recommended)', placeholder: 'Enter your OpenRouter API Key', link: 'https://openrouter.ai/keys' },
+    { id: 'OpenRouter', name: 'OpenRouter (200/day Free)', placeholder: 'Enter your OpenRouter API Key', link: 'https://openrouter.ai/keys' },
     { id: 'Azure Computer Vision', name: 'Azure Computer Vision', placeholder: 'Enter your Azure API Key', link: 'https://azure.microsoft.com/en-us/services/cognitive-services/computer-vision/' },
-    { id: 'Hugging Face', name: 'Hugging Face (Free - Accurate)', placeholder: 'Enter your Hugging Face Access Token', link: 'https://huggingface.co/settings/tokens' }
+    { id: 'Hugging Face', name: 'Hugging Face (Legacy)', placeholder: 'Enter your Hugging Face Access Token', link: 'https://huggingface.co/settings/tokens' }
 ];
 
 const ApiKeySetup = ({ onSave }) => {
-    const [keys, setKeys] = useState([{ id: 1, provider: 'Local Device', key: 'LOCAL_MODE', visible: false }]);
+    const [keys, setKeys] = useState([{ id: 1, provider: 'Local Device', key: 'LOCAL_MODE', imaggaSecret: '', visible: false }]);
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -23,7 +26,7 @@ const ApiKeySetup = ({ onSave }) => {
 
     const addKey = () => {
         if (keys.length >= 5) return;
-        setKeys([...keys, { id: Date.now(), provider: 'Google Cloud Vision', key: '', visible: false }]);
+        setKeys([...keys, { id: Date.now(), provider: 'Google Cloud Vision', key: '', imaggaSecret: '', visible: false }]);
     };
 
     const removeKey = (id) => {
@@ -60,9 +63,20 @@ const ApiKeySetup = ({ onSave }) => {
             return;
         }
 
+        // For Imagga, combine API Key and Secret with colon
+        const processedKeys = validKeys.map(k => {
+            if (k.provider === 'Imagga' && k.imaggaSecret) {
+                return {
+                    ...k,
+                    key: `${k.key}:${k.imaggaSecret}`  // Combine key:secret
+                };
+            }
+            return k;
+        });
+
         // Save to session storage
-        sessionStorage.setItem('apiKeys', JSON.stringify(validKeys));
-        onSave(validKeys);
+        sessionStorage.setItem('apiKeys', JSON.stringify(processedKeys));
+        onSave(processedKeys);
     };
 
     return (
@@ -95,24 +109,59 @@ const ApiKeySetup = ({ onSave }) => {
                                 </select>
                             </div>
 
-                            <div className="md:col-span-2 relative">
-                                <input
-                                    type={item.visible ? "text" : "password"}
-                                    value={item.key}
-                                    onChange={(e) => updateKey(item.id, 'key', e.target.value)}
-                                    placeholder={PROVIDERS.find(p => p.id === item.provider)?.placeholder || "Paste API Key here"}
-                                    disabled={item.provider === 'Local Device'}
-                                    className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none pr-10 ${item.provider === 'Local Device' ? 'bg-gray-100 text-gray-500' : ''}`}
-                                />
-                                {item.provider !== 'Local Device' && (
-                                    <button
-                                        onClick={() => toggleVisibility(item.id)}
-                                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                    >
-                                        {item.visible ? <EyeOff size={18} /> : <Eye size={18} />}
-                                    </button>
-                                )}
-                            </div>
+                            {/* API Key Input - Regular providers get one field */}
+                            {item.provider !== 'Imagga' && (
+                                <div className="md:col-span-2 relative">
+                                    <input
+                                        type={item.visible ? "text" : "password"}
+                                        value={item.key}
+                                        onChange={(e) => updateKey(item.id, 'key', e.target.value)}
+                                        placeholder={PROVIDERS.find(p => p.id === item.provider)?.placeholder || "Paste API Key here"}
+                                        disabled={item.provider === 'Local Device'}
+                                        className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none pr-10 ${item.provider === 'Local Device' ? 'bg-gray-100 text-gray-500' : ''}`}
+                                    />
+                                    {item.provider !== 'Local Device' && (
+                                        <button
+                                            onClick={() => toggleVisibility(item.id)}
+                                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                        >
+                                            {item.visible ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Imagga gets TWO separate fields */}
+                            {item.provider === 'Imagga' && (
+                                <>
+                                    <div className="md:col-span-1 relative">
+                                        <label className="block text-xs text-gray-600 mb-1">API Key</label>
+                                        <input
+                                            type={item.visible ? "text" : "password"}
+                                            value={item.key}
+                                            onChange={(e) => updateKey(item.id, 'key', e.target.value)}
+                                            placeholder="Enter API Key (acc_...)"
+                                            className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+                                        />
+                                    </div>
+                                    <div className="md:col-span-1 relative">
+                                        <label className="block text-xs text-gray-600 mb-1">API Secret</label>
+                                        <input
+                                            type={item.visible ? "text" : "password"}
+                                            value={item.imaggaSecret || ''}
+                                            onChange={(e) => updateKey(item.id, 'imaggaSecret', e.target.value)}
+                                            placeholder="Enter API Secret"
+                                            className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+                                        />
+                                        <button
+                                            onClick={() => toggleVisibility(item.id)}
+                                            className="absolute right-3 top-[60%] transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                        >
+                                            {item.visible ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         {/* OpenRouter Instructions */}
@@ -137,6 +186,20 @@ const ApiKeySetup = ({ onSave }) => {
                                     <li>Go to: <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" className="underline font-medium">Settings &gt; Access Tokens</a></li>
                                     <li>Click "New token" &rarr; Name: "image-categorizer" &rarr; Role: "read"</li>
                                     <li>Copy the token (starts with "hf_...") and paste it above</li>
+                                </ol>
+                            </div>
+                        )}
+
+                        {/* Imagga Instructions */}
+                        {item.provider === 'Imagga' && (
+                            <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800">
+                                <p className="font-semibold mb-1">✅ Imagga Setup is Easy!</p>
+                                <ol className="list-decimal list-inside space-y-1 ml-1">
+                                    <li>Visit: <a href="https://imagga.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">imagga.com</a> and sign up (free)</li>
+                                    <li>Go to: <a href="https://imagga.com/profile/api-keys" target="_blank" rel="noopener noreferrer" className="underline font-medium">Dashboard → API Keys</a></li>
+                                    <li>Copy your <strong>API Key</strong> and paste it in the first field above</li>
+                                    <li>Copy your <strong>API Secret</strong> and paste it in the second field above</li>
+                                    <li>Click Save & Continue - Done! 🎉</li>
                                 </ol>
                             </div>
                         )}

@@ -129,6 +129,9 @@ const ImageUploader = ({ onUpload, isUploading }) => {
                         <p className="text-sm text-gray-500 mt-1">
                             or <button type="button" onClick={triggerUpload} className="text-blue-600 hover:underline font-medium relative z-10">browse files</button> to upload
                         </p>
+                        <p className="text-xs text-green-600 font-medium mt-2">
+                            ✓ Multiple files supported - Select as many as you want!
+                        </p>
                     </div>
 
                     <div className="flex flex-wrap justify-center gap-2 text-xs text-gray-400 mt-4">
